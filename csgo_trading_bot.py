@@ -60,8 +60,9 @@ class CSGOFloatParser:
                 try:
                     error_data = response.json()
                     print(f"   Детали: {error_data}")
-                except:
-                    pass
+                except (json.JSONDecodeError, ValueError) as e:
+                    # ERROR HANDLING FIX: Specific exception instead of bare except
+                    print(f"   (Response is not JSON: {e})")
                 return None
 
         except requests.exceptions.Timeout:
@@ -191,6 +192,16 @@ class PriceDatabase:
         """Закрытие соединения с БД"""
         if self.conn:
             self.conn.close()
+            self.conn = None  # RESOURCE LEAK FIX: Set to None after closing
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensures connection is closed"""
+        self.close()
+        return False  # Don't suppress exceptions
 
 
 def collect_market_data(api_key=None):
@@ -331,9 +342,18 @@ class PriceAnalyzer:
 
         return df
 
-    def calculate_trend(self, item_name, days=7):
-        """Расчет тренда цен"""
-        df = self.get_item_dataframe(item_name, days)
+    def calculate_trend(self, item_name, days=7, df=None):
+        """
+        Расчет тренда цен
+
+        Args:
+            item_name: Название предмета
+            days: Количество дней для анализа
+            df: DataFrame с данными (опционально, для избежания повторных запросов)
+        """
+        # PERFORMANCE FIX: Allow passing DataFrame to avoid redundant DB queries
+        if df is None:
+            df = self.get_item_dataframe(item_name, days)
 
         if df is None or len(df) < 2:
             return None
@@ -370,9 +390,19 @@ class PriceAnalyzer:
             print(f"⚠️  Ошибка расчета тренда: {e}")
             return None
 
-    def predict_future_price(self, item_name, days_ahead=7, history_days=30):
-        """Прогнозирование будущей цены"""
-        df = self.get_item_dataframe(item_name, history_days)
+    def predict_future_price(self, item_name, days_ahead=7, history_days=30, df=None):
+        """
+        Прогнозирование будущей цены
+
+        Args:
+            item_name: Название предмета
+            days_ahead: На сколько дней вперед прогноз
+            history_days: Количество дней истории для обучения
+            df: DataFrame с данными (опционально, для избежания повторных запросов)
+        """
+        # PERFORMANCE FIX: Allow passing DataFrame to avoid redundant DB queries
+        if df is None:
+            df = self.get_item_dataframe(item_name, history_days)
 
         if df is None or len(df) < 10:
             return None
@@ -418,14 +448,32 @@ class PriceAnalyzer:
             return None
 
     def get_buy_recommendation(self, item_name):
-        """Получение рекомендации по покупке"""
-        trend = self.calculate_trend(item_name, days=7)
-        prediction = self.predict_future_price(item_name, days_ahead=7)
+        """
+        Получение рекомендации по покупке
+
+        PERFORMANCE OPTIMIZATION: Fetches data once and reuses for all calculations
+        """
+        # PERFORMANCE FIX: Fetch data once for all calculations
+        # Use 30 days for prediction (more data = better ML model)
+        df = self.get_item_dataframe(item_name, 30)
+
+        if df is None or len(df) < 10:
+            return {
+                'recommendation': 'WAIT',
+                'reason': 'Недостаточно данных для анализа',
+                'confidence': 0,
+                'current_price': None,
+                'predicted_price': None
+            }
+
+        # Pass df to avoid redundant DB queries
+        trend = self.calculate_trend(item_name, days=7, df=df)
+        prediction = self.predict_future_price(item_name, days_ahead=7, history_days=30, df=df)
 
         if not trend or not prediction:
             return {
                 'recommendation': 'WAIT',
-                'reason': 'Недостаточно данных для анализа',
+                'reason': 'Ошибка анализа данных',
                 'confidence': 0,
                 'current_price': None,
                 'predicted_price': None
@@ -450,8 +498,7 @@ class PriceAnalyzer:
             score -= 40
             reasons.append(f"Прогноз падения на {prediction['expected_change_percent']:.1f}%")
 
-        # Анализ волатильности
-        df = self.get_item_dataframe(item_name, 7)
+        # Анализ волатильности (reuse already fetched df)
         if df is not None and len(df) > 0:
             volatility = df['price'].std() / df['price'].mean() * 100
             if volatility > 15:
@@ -489,6 +536,7 @@ class PriceAnalyzer:
             print(f"⚠️  Нет данных для графика: {item_name}")
             return False
 
+        # RESOURCE LEAK FIX: Use try-finally to ensure matplotlib cleanup
         try:
             df['date'] = df['timestamp'].dt.date
             daily_data = df.groupby('date').agg({
@@ -497,52 +545,55 @@ class PriceAnalyzer:
 
             plt.figure(figsize=(12, 6))
 
-            plt.plot(daily_data['date'], daily_data['price']['mean'],
-                    marker='o', linewidth=2, label='Средняя цена', color='#2E86AB')
+            try:
+                plt.plot(daily_data['date'], daily_data['price']['mean'],
+                        marker='o', linewidth=2, label='Средняя цена', color='#2E86AB')
 
-            plt.fill_between(daily_data['date'],
-                             daily_data['price']['min'],
-                             daily_data['price']['max'],
-                             alpha=0.3, label='Диапазон цен', color='#A23B72')
+                plt.fill_between(daily_data['date'],
+                                 daily_data['price']['min'],
+                                 daily_data['price']['max'],
+                                 alpha=0.3, label='Диапазон цен', color='#A23B72')
 
-            # Линия тренда
-            trend = self.calculate_trend(item_name, days)
-            if trend:
-                X = np.arange(len(daily_data))
-                y = daily_data['price']['mean'].values
-                z = np.polyfit(X, y, 1)
-                p = np.poly1d(z)
+                # Линия тренда
+                trend = self.calculate_trend(item_name, days)
+                if trend:
+                    X = np.arange(len(daily_data))
+                    y = daily_data['price']['mean'].values
+                    z = np.polyfit(X, y, 1)
+                    p = np.poly1d(z)
 
-                trend_color = '#06A77D' if trend['direction'] == 'UP' else '#D81159'
-                plt.plot(daily_data['date'], p(X),
-                        "--", linewidth=2, alpha=0.8,
-                        color=trend_color,
-                        label=f'Тренд ({trend["direction"]} {trend["percent_change"]:+.1f}%)')
+                    trend_color = '#06A77D' if trend['direction'] == 'UP' else '#D81159'
+                    plt.plot(daily_data['date'], p(X),
+                            "--", linewidth=2, alpha=0.8,
+                            color=trend_color,
+                            label=f'Тренд ({trend["direction"]} {trend["percent_change"]:+.1f}%)')
 
-            plt.xlabel('Дата', fontsize=12, fontweight='bold')
-            plt.ylabel('Цена ($)', fontsize=12, fontweight='bold')
-            plt.title(f'{item_name} - История цен ({days} дней)',
-                     fontsize=14, fontweight='bold', pad=20)
-            plt.legend(loc='best', framealpha=0.9)
-            plt.grid(True, alpha=0.3, linestyle='--')
-            plt.xticks(rotation=45, ha='right')
-            plt.tight_layout()
+                plt.xlabel('Дата', fontsize=12, fontweight='bold')
+                plt.ylabel('Цена ($)', fontsize=12, fontweight='bold')
+                plt.title(f'{item_name} - История цен ({days} дней)',
+                         fontsize=14, fontweight='bold', pad=20)
+                plt.legend(loc='best', framealpha=0.9)
+                plt.grid(True, alpha=0.3, linestyle='--')
+                plt.xticks(rotation=45, ha='right')
+                plt.tight_layout()
 
-            if save_path:
-                plt.savefig(save_path, dpi=300, bbox_inches='tight')
-                print(f"📊 График сохранен: {save_path}")
-            else:
-                # FIX: Не показываем график в CLI, только сохраняем
-                default_path = f"{item_name.replace(' ', '_').replace('|', '-')}_price_history.png"
-                plt.savefig(default_path, dpi=300, bbox_inches='tight')
-                print(f"📊 График сохранен: {default_path}")
+                if save_path:
+                    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                    print(f"📊 График сохранен: {save_path}")
+                else:
+                    # FIX: Не показываем график в CLI, только сохраняем
+                    default_path = f"{item_name.replace(' ', '_').replace('|', '-')}_price_history.png"
+                    plt.savefig(default_path, dpi=300, bbox_inches='tight')
+                    print(f"📊 График сохранен: {default_path}")
 
-            plt.close()  # FIX: Закрываем фигуру чтобы не накапливать в памяти
-            return True
+                return True
+
+            finally:
+                # Ensure figure is closed even if error occurs
+                plt.close()
 
         except Exception as e:
             print(f"⚠️  Ошибка построения графика: {e}")
-            plt.close()
             return False
 
 

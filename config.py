@@ -4,6 +4,7 @@ import yaml
 import json
 from pathlib import Path
 from typing import Any, Dict, Optional
+import warnings
 
 
 class Config:
@@ -121,6 +122,46 @@ class Config:
 
         data[keys[-1]] = value
 
+    def get_secret(self, key_path: str, env_var: Optional[str] = None, default: Any = None) -> Any:
+        """
+        Get sensitive configuration value with environment variable fallback
+
+        Security best practice: Sensitive data should be in environment variables,
+        not in config files that might be committed to version control.
+
+        Priority:
+        1. Environment variable (if env_var specified)
+        2. Config file value
+        3. Default value
+
+        Args:
+            key_path: Dot-separated path in config
+            env_var: Environment variable name to check first
+            default: Default value if not found
+
+        Returns:
+            Configuration value from env var, config, or default
+        """
+        # First check environment variable
+        if env_var:
+            env_value = os.getenv(env_var)
+            if env_value:
+                return env_value
+
+        # Then check config file
+        config_value = self.get(key_path)
+        if config_value is not None:
+            # Warn if sensitive data is in config file
+            if env_var and not os.getenv(env_var):
+                warnings.warn(
+                    f"Sensitive data '{key_path}' found in config file. "
+                    f"Consider using environment variable '{env_var}' instead.",
+                    UserWarning
+                )
+            return config_value
+
+        return default
+
     def save(self, path: Optional[str] = None) -> None:
         """
         Save configuration to file
@@ -147,8 +188,13 @@ class Config:
     # Convenient property accessors
     @property
     def api_key(self) -> Optional[str]:
-        """Get CSGOFloat API key"""
-        return self.get('api.csgofloat.api_key')
+        """
+        Get CSGOFloat API key (prefers environment variable)
+
+        Checks CSGOFLOAT_API_KEY environment variable first,
+        then falls back to config file.
+        """
+        return self.get_secret('api.csgofloat.api_key', 'CSGOFLOAT_API_KEY')
 
     @property
     def db_name(self) -> str:

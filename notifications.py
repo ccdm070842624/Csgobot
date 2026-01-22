@@ -1,5 +1,6 @@
 """Notification system for CS:GO Trading Bot"""
 import smtplib
+import html as html_module
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, List
@@ -126,7 +127,13 @@ class NotificationSystem:
             smtp_server = self.config.get('notifications.email.smtp_server')
             smtp_port = self.config.get('notifications.email.smtp_port')
             sender = self.config.get('notifications.email.sender')
-            password = self.config.get('notifications.email.password')
+
+            # SECURITY FIX: Use environment variable for password
+            password = self.config.get_secret(
+                'notifications.email.password',
+                'SMTP_PASSWORD'
+            )
+
             recipients = self.config.get('notifications.email.recipients', [])
 
             if not all([smtp_server, sender, password, recipients]):
@@ -166,7 +173,7 @@ class NotificationSystem:
         predicted_price: Optional[float],
         reasons: Optional[List[str]]
     ) -> str:
-        """Create HTML email content"""
+        """Create HTML email content with proper escaping"""
         color_map = {
             'BUY': '#28a745',
             'SELL': '#dc3545',
@@ -175,6 +182,10 @@ class NotificationSystem:
         }
 
         color = color_map.get(action, '#007bff')
+
+        # SECURITY FIX: Escape HTML to prevent injection
+        item_escaped = html_module.escape(item)
+        action_escaped = html_module.escape(action)
 
         html = f"""
         <html>
@@ -189,12 +200,12 @@ class NotificationSystem:
         </head>
         <body>
             <div class="header">
-                <h1>{action} Signal</h1>
+                <h1>{action_escaped} Signal</h1>
                 <p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
             </div>
             <div class="content">
-                <div class="info"><strong>Item:</strong> {item}</div>
-                <div class="info"><strong>Action:</strong> {action}</div>
+                <div class="info"><strong>Item:</strong> {item_escaped}</div>
+                <div class="info"><strong>Action:</strong> {action_escaped}</div>
                 <div class="info"><strong>Confidence:</strong> {confidence:.0f}%</div>
                 <div class="info"><strong>Current Price:</strong> ${current_price:.2f}</div>
         """
@@ -213,7 +224,9 @@ class NotificationSystem:
                     <ul>
             """
             for reason in reasons:
-                html += f"<li>{reason}</li>"
+                # SECURITY FIX: Escape HTML in reasons
+                reason_escaped = html_module.escape(str(reason))
+                html += f"<li>{reason_escaped}</li>"
             html += """
                     </ul>
                 </div>

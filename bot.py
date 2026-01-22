@@ -8,10 +8,11 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import List, Dict, Any, Optional
 
 # Import all modules
-from config import get_config
-from logger import setup_logger_from_config
+from config import get_config, Config
+from logger import setup_logger_from_config, TradingBotLogger
 from notifications import NotificationSystem
 from export import ReportExporter
 from backtesting import Backtester
@@ -28,7 +29,7 @@ from csgo_trading_bot import (
 class EnhancedTradingBot:
     """Enhanced trading bot with all new features"""
 
-    def __init__(self, config_path=None):
+    def __init__(self, config_path: Optional[str] = None):
         """
         Initialize enhanced trading bot
 
@@ -36,7 +37,7 @@ class EnhancedTradingBot:
             config_path: Path to configuration file
         """
         # Load configuration
-        self.config = get_config(config_path)
+        self.config: Config = get_config(config_path)
 
         # Setup logger
         self.logger = setup_logger_from_config(self.config)
@@ -51,7 +52,7 @@ class EnhancedTradingBot:
 
         self.logger.info("All components initialized successfully")
 
-    def collect_data(self, items=None):
+    def collect_data(self, items: Optional[List[str]] = None) -> None:
         """
         Collect market data
 
@@ -66,17 +67,18 @@ class EnhancedTradingBot:
 
         self.logger.info(f"Starting data collection for {len(items)} items")
 
-        db = PriceDatabase(self.config.db_name)
-        success_count = 0
-        fail_count = 0
+        # RESOURCE LEAK FIX: Use context manager to ensure DB is closed
+        with PriceDatabase(self.config.db_name) as db:
+            success_count = 0
+            fail_count = 0
 
-        for item_name in items:
-            self.logger.info(f"Collecting data for: {item_name}")
+            for item_name in items:
+                self.logger.info(f"Collecting data for: {item_name}")
 
-            listings = self.parser.get_item_listings(
-                item_name,
-                limit=self.config.get('data_collection.listings_per_item', 20)
-            )
+                listings = self.parser.get_item_listings(
+                    item_name,
+                    limit=self.config.get('data_collection.listings_per_item', 20)
+                )
 
             if listings is None:
                 self.logger.warning(f"Failed to get listings for {item_name}")
@@ -130,16 +132,15 @@ class EnhancedTradingBot:
                 if db.save_market_stats(item_name, stats):
                     self.logger.data_collected(item_name, saved_count, stats['avg_price'])
                     success_count += 1
-            else:
-                fail_count += 1
+                else:
+                    fail_count += 1
 
-            time.sleep(self.config.get('api.csgofloat.rate_limit_delay', 5))
+                time.sleep(self.config.get('api.csgofloat.rate_limit_delay', 5))
 
-        db.close()
+            # Context manager will auto-close db connection
+            self.logger.info(f"Data collection complete: {success_count} successful, {fail_count} failed")
 
-        self.logger.info(f"Data collection complete: {success_count} successful, {fail_count} failed")
-
-    def analyze(self, items=None, export_results=True):
+    def analyze(self, items: Optional[List[str]] = None, export_results: bool = True) -> List[Dict[str, Any]]:
         """
         Analyze items and generate recommendations
 
@@ -236,13 +237,21 @@ class EnhancedTradingBot:
         self.logger.info(f"Generating charts for {len(items)} items")
 
         charts_created = 0
-        save_path = self.config.get('reporting.charts.save_path', 'charts/')
+        save_path_str = self.config.get('reporting.charts.save_path', 'charts/')
+
+        # SECURITY FIX: Use Path for safe path handling
+        save_path = Path(save_path_str)
+        save_path.mkdir(parents=True, exist_ok=True)
 
         for item in items:
-            safe_name = item.replace(' ', '_').replace('|', '-')
-            chart_file = f"{save_path}{safe_name}_history.png"
+            # Sanitize filename to prevent path traversal
+            safe_name = "".join(c for c in item if c.isalnum() or c in (' ', '-', '_')).strip()
+            safe_name = safe_name.replace(' ', '_').replace('|', '-')
 
-            if self.analyzer.plot_price_history(item, days=days, save_path=chart_file):
+            # Use Path.joinpath for safe concatenation
+            chart_file = save_path / f"{safe_name}_history.png"
+
+            if self.analyzer.plot_price_history(item, days=days, save_path=str(chart_file)):
                 charts_created += 1
 
         self.logger.info(f"Generated {charts_created} charts")
