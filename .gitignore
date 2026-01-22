@@ -34,6 +34,9 @@ env/
 .env
 config.ini
 secrets.json
+*_config.yaml
+*_config.yml
+*_config.json
 
 # Generated files
 *.png

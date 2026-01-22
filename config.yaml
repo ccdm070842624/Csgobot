@@ -1,0 +1,158 @@
+# CS:GO Trading Bot Configuration
+
+# API Settings
+api:
+  csgofloat:
+    api_key: null  # Set your CSGOFloat API key here
+    base_url: "https://csgofloat.com/api/v1"
+    timeout: 15
+    rate_limit_delay: 5  # seconds between requests
+    max_retries: 3
+    retry_delay: 2  # exponential backoff starting delay
+
+  steam:
+    enabled: false
+    api_key: null  # Set your Steam API key here
+    currency: 1  # USD
+
+# Database Settings
+database:
+  name: "csgo_prices.db"
+  backup_enabled: true
+  backup_interval: 86400  # 24 hours in seconds
+
+# Trading Strategy
+strategy:
+  # Minimum confidence for BUY recommendation
+  min_buy_confidence: 50
+
+  # Minimum confidence for SELL recommendation
+  min_sell_confidence: 50
+
+  # Trend analysis parameters
+  trend_days: 7
+  trend_strength_threshold: 2.0  # percent
+
+  # Prediction parameters
+  prediction_days_ahead: 7
+  prediction_history_days: 30
+
+  # Risk management
+  max_item_price: 100.0  # USD
+  min_item_price: 1.0    # USD
+  volatility_threshold: 15.0  # percent
+
+  # Scoring weights
+  weights:
+    trend: 30
+    prediction: 40
+    volatility: 20
+    volume: 10
+
+# Items to Track
+items:
+  - "AK-47 | Redline (Field-Tested)"
+  - "AWP | Asiimov (Field-Tested)"
+  - "M4A4 | Desert-Strike (Factory New)"
+  - "Glock-18 | Water Elemental (Minimal Wear)"
+  - "Desert Eagle | Kumicho Dragon (Factory New)"
+  - "USP-S | Kill Confirmed (Field-Tested)"
+  - "M4A1-S | Hyper Beast (Field-Tested)"
+  - "AK-47 | Vulcan (Minimal Wear)"
+  - "AWP | Lightning Strike (Factory New)"
+  - "Desert Eagle | Blaze (Factory New)"
+
+# Data Collection
+data_collection:
+  listings_per_item: 20
+  collection_interval: 3600  # 1 hour in seconds
+  max_data_age_days: 90
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file_enabled: true
+  file_path: "logs/trading_bot.log"
+  file_max_bytes: 10485760  # 10 MB
+  file_backup_count: 5
+  console_enabled: true
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+
+# Notifications
+notifications:
+  enabled: true
+
+  console:
+    enabled: true
+    show_buy_signals: true
+    show_sell_signals: true
+    min_confidence: 60
+
+  email:
+    enabled: false
+    smtp_server: "smtp.gmail.com"
+    smtp_port: 587
+    sender: ""
+    password: ""
+    recipients: []
+
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+
+# Backtesting
+backtesting:
+  enabled: true
+  initial_balance: 100.0  # USD
+  transaction_fee: 0.05  # 5% per transaction
+  min_profit_threshold: 0.10  # 10% minimum profit
+
+# Reporting
+reporting:
+  export_enabled: true
+  export_format: ["csv", "json"]  # csv, json, html
+  export_path: "reports/"
+
+  charts:
+    save_enabled: true
+    save_path: "charts/"
+    dpi: 300
+    style: "seaborn-v0_8-darkgrid"  # matplotlib style
+
+# Cache
+cache:
+  enabled: true
+  ttl: 300  # 5 minutes
+  max_size: 1000
+
+# Advanced
+advanced:
+  # Machine Learning
+  ml:
+    model_type: "random_forest"  # random_forest, gradient_boosting, lstm
+    n_estimators: 100
+    max_depth: 15
+    random_state: 42
+    cross_validation: true
+    cv_folds: 5
+
+  # Feature Engineering
+  features:
+    use_float_value: true
+    use_paint_seed: true
+    use_volume: true
+    use_moving_average: true
+    ma_windows: [3, 7, 14]  # days
+    use_rsi: true
+    rsi_period: 14
+    use_bollinger_bands: true
+    bb_period: 20
+    bb_std: 2
+
+  # Portfolio Optimization
+  portfolio:
+    enabled: false
+    max_items: 10
+    diversification_factor: 0.3
+    rebalance_threshold: 0.2
