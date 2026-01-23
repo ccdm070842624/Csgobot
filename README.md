@@ -476,9 +476,9 @@ MIT License - см. [LICENSE](LICENSE)
 
 ## 📞 Поддержка
 
-- **Issues**: GitHub Issues
-- **Discussions**: GitHub Discussions
-- **Email**: support@example.com
+- **Issues**: ilja2000danilichev@gmail.com
+- **Discussions**: GitHub
+- **Email**: ilja2000danilichev@gmail.com
 
 ## 🗺️ Roadmap
 
