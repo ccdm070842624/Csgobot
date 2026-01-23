@@ -2,6 +2,7 @@
 import os
 import csv
 import json
+import html
 from datetime import datetime
 from typing import List, Dict, Any
 from pathlib import Path
@@ -75,7 +76,8 @@ class ReportExporter:
                         'reasons': ' | '.join(data.get('reasons', []))
                     })
 
-                if flat_results:
+                # BUG FIX #8: Additional safety check before accessing flat_results[0]
+                if flat_results and len(flat_results) > 0:
                     writer = csv.DictWriter(f, fieldnames=flat_results[0].keys())
                     writer.writeheader()
                     writer.writerows(flat_results)
@@ -212,10 +214,14 @@ class ReportExporter:
             predicted_price = data.get('predicted_price', 0)
             expected_change = data.get('expected_change_percent', 0)
 
+            # BUG FIX #15: HTML injection - escape user-provided content
+            item_escaped = html.escape(str(r.get('item', 'Unknown')))
+            rec_escaped = html.escape(str(rec))
+
             html += f"""
                     <tr class="{conf_class}">
-                        <td>{r.get('item', 'Unknown')}</td>
-                        <td class="{rec_class}">{rec}</td>
+                        <td>{item_escaped}</td>
+                        <td class="{rec_class}">{rec_escaped}</td>
                         <td>{conf:.0f}%</td>
                         <td>${current_price:.2f}</td>
                         <td>${predicted_price:.2f}</td>

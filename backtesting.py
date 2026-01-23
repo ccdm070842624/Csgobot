@@ -137,6 +137,9 @@ class Portfolio:
 
     def get_roi(self, current_prices: Dict[str, float]) -> float:
         """Calculate ROI percentage"""
+        # BUG FIX #6: Division by zero - validate initial_balance != 0
+        if self.initial_balance == 0:
+            return 0.0  # Can't calculate ROI with zero initial balance
         return (self.get_profit_loss(current_prices) / self.initial_balance) * 100
 
 
@@ -215,6 +218,11 @@ class Backtester:
             elif action == 'SELL' and item in portfolio.holdings:
                 # Sell signal
                 holding = portfolio.holdings[item]
+
+                # BUG FIX #7: Division by zero - validate avg_price != 0
+                if holding['avg_price'] == 0:
+                    continue  # Skip items with zero average price
+
                 profit_pct = ((current_price - holding['avg_price']) / holding['avg_price'])
 
                 # Only sell if profit meets threshold or confidence is high

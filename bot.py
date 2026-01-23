@@ -195,7 +195,8 @@ class EnhancedTradingBot:
                     sell_signals += 1
 
                 # Send notification if meets criteria
-                if rec.get('current_price'):
+                # BUG FIX #10: Check for not None instead of truthy (0.0 is valid price)
+                if rec.get('current_price') is not None:
                     self.notifier.send_trade_signal(
                         item=item_name,
                         action=rec['recommendation'],
@@ -378,10 +379,13 @@ class EnhancedTradingBot:
             print(f"{i}. {opp['item']}")
             print(f"   Confidence: {opp['confidence']:.0f}%")
 
-            if (opp['data'].get('predicted_price') and
-                opp['data'].get('current_price')):
-                potential = opp['data']['predicted_price'] - opp['data']['current_price']
-                potential_pct = (potential / opp['data']['current_price']) * 100
+            # BUG FIX #11: Check for not None and > 0 to handle zero prices correctly
+            predicted = opp['data'].get('predicted_price')
+            current = opp['data'].get('current_price')
+
+            if predicted is not None and current is not None and current > 0:
+                potential = predicted - current
+                potential_pct = (potential / current) * 100
                 print(f"   Potential: +${potential:.2f} (+{potential_pct:.1f}%)")
 
             print()

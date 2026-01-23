@@ -101,7 +101,8 @@ class NotificationSystem:
         print(f"Confidence: {confidence:.0f}%")
         print(f"Price:      ${current_price:.2f}")
 
-        if predicted_price:
+        # BUG FIX #4: Division by zero - validate both prices and current_price != 0
+        if predicted_price is not None and current_price > 0:
             change = predicted_price - current_price
             change_pct = (change / current_price) * 100
             print(f"Predicted:  ${predicted_price:.2f} ({change_pct:+.1f}%)")
@@ -210,7 +211,8 @@ class NotificationSystem:
                 <div class="info"><strong>Current Price:</strong> ${current_price:.2f}</div>
         """
 
-        if predicted_price:
+        # BUG FIX #5: Division by zero - validate both prices and current_price != 0
+        if predicted_price is not None and current_price > 0:
             change = predicted_price - current_price
             change_pct = (change / current_price) * 100
             html += f"""

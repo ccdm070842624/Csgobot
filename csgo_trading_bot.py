@@ -376,6 +376,12 @@ class PriceAnalyzer:
 
             start_price = daily_avg['price'].iloc[0]
             end_price = daily_avg['price'].iloc[-1]
+
+            # BUG FIX #1: Division by zero - validate start_price != 0
+            if start_price == 0:
+                print(f"⚠️  Start price is zero, cannot calculate trend")
+                return None
+
             percent_change = ((end_price - start_price) / start_price) * 100
 
             return {
@@ -426,6 +432,12 @@ class PriceAnalyzer:
             predicted_price = model.predict(future_days)[0]
 
             current_price = df['price'].iloc[-1]
+
+            # BUG FIX #2: Division by zero - validate current_price != 0
+            if current_price == 0:
+                print(f"⚠️  Current price is zero, cannot calculate expected change")
+                return None
+
             expected_change = ((predicted_price - current_price) / current_price) * 100
 
             # FIX: Более точная оценка уверенности
@@ -499,14 +511,22 @@ class PriceAnalyzer:
             reasons.append(f"Прогноз падения на {prediction['expected_change_percent']:.1f}%")
 
         # Анализ волатильности (reuse already fetched df)
-        if df is not None and len(df) > 0:
-            volatility = df['price'].std() / df['price'].mean() * 100
-            if volatility > 15:
-                score -= 20
-                reasons.append(f"Высокая волатильность ({volatility:.1f}%)")
-            elif volatility < 5:
-                score += 10
-                reasons.append(f"Низкая волатильность ({volatility:.1f}%)")
+        # BUG FIX #3 & #9: Division by zero + NaN handling - need at least 2 points for std
+        if df is not None and len(df) > 1:
+            price_mean = df['price'].mean()
+
+            # Check mean is not zero before division
+            if price_mean > 0:
+                volatility = df['price'].std() / price_mean * 100
+
+                # Check for NaN (happens with constant prices)
+                if not np.isnan(volatility):
+                    if volatility > 15:
+                        score -= 20
+                        reasons.append(f"Высокая волатильность ({volatility:.1f}%)")
+                    elif volatility < 5:
+                        score += 10
+                        reasons.append(f"Низкая волатильность ({volatility:.1f}%)")
 
         # Определение рекомендации
         if score > 30:
