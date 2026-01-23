@@ -80,58 +80,72 @@ class EnhancedTradingBot:
                     limit=self.config.get('data_collection.listings_per_item', 20)
                 )
 
-            if listings is None:
-                self.logger.warning(f"Failed to get listings for {item_name}")
-                fail_count += 1
-                time.sleep(self.config.get('api.csgofloat.rate_limit_delay', 5))
-                continue
-
-            if not listings:
-                self.logger.warning(f"No listings found for {item_name}")
-                fail_count += 1
-                time.sleep(3)
-                continue
-
-            # Process listings
-            prices = []
-            saved_count = 0
-
-            for listing in listings:
-                try:
-                    price_raw = listing.get('price', 0)
-                    price = price_raw / 100 if price_raw > 1000 else price_raw
-
-                    if price <= 0:
-                        continue
-
-                    parsed = {
-                        'item_name': item_name,
-                        'price': price,
-                        'float_value': listing.get('float_value') or listing.get('float'),
-                        'paint_seed': listing.get('paint_seed') or listing.get('paintseed'),
-                        'source': 'csgofloat'
-                    }
-
-                    if db.save_listing(parsed):
-                        prices.append(price)
-                        saved_count += 1
-
-                except Exception as e:
-                    self.logger.debug(f"Error processing listing: {e}")
+                if listings is None:
+                    self.logger.warning(f"Failed to get listings for {item_name}")
+                    fail_count += 1
+                    time.sleep(self.config.get('api.csgofloat.rate_limit_delay', 5))
                     continue
 
-            # Save statistics
-            if prices:
-                stats = {
-                    'avg_price': sum(prices) / len(prices),
-                    'min_price': min(prices),
-                    'max_price': max(prices),
-                    'volume': len(prices)
-                }
+                if not listings:
+                    self.logger.warning(f"No listings found for {item_name}")
+                    fail_count += 1
+                    time.sleep(3)
+                    continue
 
-                if db.save_market_stats(item_name, stats):
-                    self.logger.data_collected(item_name, saved_count, stats['avg_price'])
-                    success_count += 1
+                # Process listings
+                prices = []
+                saved_count = 0
+
+                for listing in listings:
+                    try:
+                        price_raw = listing.get('price', 0)
+
+                        # BUG FIX: Validate price_raw is numeric
+                        if not isinstance(price_raw, (int, float)):
+                            try:
+                                price_raw = float(price_raw)
+                            except (ValueError, TypeError):
+                                self.logger.debug(f"Invalid price format: {price_raw}")
+                                continue
+
+                        # Normalize price (assume cents if > 1000, otherwise dollars)
+                        price = price_raw / 100 if price_raw > 1000 else price_raw
+
+                        if price <= 0:
+                            continue
+
+                        parsed = {
+                            'item_name': item_name,
+                            'price': price,
+                            'float_value': listing.get('float_value') or listing.get('float'),
+                            'paint_seed': listing.get('paint_seed') or listing.get('paintseed'),
+                            'source': 'csgofloat'
+                        }
+
+                        if db.save_listing(parsed):
+                            prices.append(price)
+                            saved_count += 1
+
+                    except Exception as e:
+                        self.logger.debug(f"Error processing listing: {e}")
+                        continue
+
+                # Save statistics
+                if prices:
+                    stats = {
+                        'avg_price': sum(prices) / len(prices),
+                        'min_price': min(prices),
+                        'max_price': max(prices),
+                        'volume': len(prices)
+                    }
+
+                    if db.save_market_stats(item_name, stats):
+                        self.logger.data_collected(item_name, saved_count, stats['avg_price'])
+                        success_count += 1
+                    else:
+                        # BUG FIX: Increment fail_count when save_market_stats fails
+                        fail_count += 1
+                        self.logger.warning(f"Failed to save market stats for {item_name}")
                 else:
                     fail_count += 1
 
@@ -166,50 +180,62 @@ class EnhancedTradingBot:
         for item_name in items:
             self.logger.info(f"Analyzing: {item_name}")
 
-            rec = self.analyzer.get_buy_recommendation(item_name)
+            # BUG FIX: Wrap in try-except to prevent one bad item from crashing entire analysis
+            try:
+                rec = self.analyzer.get_buy_recommendation(item_name)
 
-            if rec['recommendation'] == 'BUY':
-                buy_signals += 1
-            elif rec['recommendation'] == 'SELL':
-                sell_signals += 1
+                # BUG FIX: Defensive check for None or invalid response
+                if not rec or 'recommendation' not in rec:
+                    self.logger.warning(f"Invalid recommendation response for {item_name}")
+                    continue
 
-            # Send notification if meets criteria
-            if rec.get('current_price'):
-                self.notifier.send_trade_signal(
-                    item=item_name,
-                    action=rec['recommendation'],
-                    confidence=rec['confidence'],
-                    current_price=rec['current_price'],
-                    predicted_price=rec.get('predicted_price'),
-                    reasons=rec.get('reasons')
-                )
+                if rec['recommendation'] == 'BUY':
+                    buy_signals += 1
+                elif rec['recommendation'] == 'SELL':
+                    sell_signals += 1
 
-                # Log trade signal
-                if rec['recommendation'] in ['BUY', 'SELL']:
-                    self.logger.trade_signal(
+                # Send notification if meets criteria
+                if rec.get('current_price'):
+                    self.notifier.send_trade_signal(
                         item=item_name,
                         action=rec['recommendation'],
-                        confidence=rec['confidence'],
-                        price=rec['current_price']
+                        confidence=rec.get('confidence', 0),
+                        current_price=rec['current_price'],
+                        predicted_price=rec.get('predicted_price'),
+                        reasons=rec.get('reasons')
                     )
 
-            # Log prediction
-            if rec.get('predicted_price') and rec.get('current_price'):
-                change_pct = ((rec['predicted_price'] - rec['current_price']) /
-                             rec['current_price'] * 100)
-                self.logger.prediction(
-                    item=item_name,
-                    current=rec['current_price'],
-                    predicted=rec['predicted_price'],
-                    change_pct=change_pct
-                )
+                    # Log trade signal
+                    if rec['recommendation'] in ['BUY', 'SELL']:
+                        self.logger.trade_signal(
+                            item=item_name,
+                            action=rec['recommendation'],
+                            confidence=rec.get('confidence', 0),
+                            price=rec['current_price']
+                        )
 
-            results.append({
-                'item': item_name,
-                'recommendation': rec['recommendation'],
-                'confidence': rec['confidence'],
-                'data': rec
-            })
+                # Log prediction
+                if rec.get('predicted_price') and rec.get('current_price'):
+                    change_pct = ((rec['predicted_price'] - rec['current_price']) /
+                                 rec['current_price'] * 100)
+                    self.logger.prediction(
+                        item=item_name,
+                        current=rec['current_price'],
+                        predicted=rec['predicted_price'],
+                        change_pct=change_pct
+                    )
+
+                results.append({
+                    'item': item_name,
+                    'recommendation': rec['recommendation'],
+                    'confidence': rec.get('confidence', 0),
+                    'data': rec
+                })
+
+            except Exception as e:
+                self.logger.error(f"Error analyzing {item_name}: {e}")
+                # Continue with next item instead of crashing
+                continue
 
         # Send summary
         self.notifier.send_summary(len(items), buy_signals, sell_signals)
