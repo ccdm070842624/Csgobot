@@ -695,9 +695,10 @@ class TradingBot:
             print(f"{i}. {opp['item']}")
             print(f"   Уверенность: {opp['confidence']:.0f}%")
 
-            # FIX: Проверка наличия данных
+            # BUG FIX: Division by zero - validate both is not None and > 0
             if (opp['data'].get('predicted_price') is not None and
-                opp['data'].get('current_price') is not None):
+                opp['data'].get('current_price') is not None and
+                opp['data']['current_price'] > 0):
                 potential = opp['data']['predicted_price'] - opp['data']['current_price']
                 potential_percent = (potential / opp['data']['current_price']) * 100
                 print(f"   Потенциал: +${potential:.2f} (+{potential_percent:.1f}%)")

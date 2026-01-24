@@ -36,6 +36,10 @@ class Portfolio:
         Returns:
             True if successful, False otherwise
         """
+        # BUG FIX: Validate quantity to prevent division by zero
+        if quantity <= 0:
+            return False
+
         total_cost = price * quantity
         fee = total_cost * self.transaction_fee
         total_with_fee = total_cost + fee
@@ -86,6 +90,10 @@ class Portfolio:
         Returns:
             True if successful, False otherwise
         """
+        # BUG FIX: Validate quantity
+        if quantity <= 0:
+            return False
+
         if item not in self.holdings or self.holdings[item]['quantity'] < quantity:
             return False
 

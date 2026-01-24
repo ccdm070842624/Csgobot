@@ -216,7 +216,8 @@ class EnhancedTradingBot:
                         )
 
                 # Log prediction
-                if rec.get('predicted_price') and rec.get('current_price'):
+                # BUG FIX: Division by zero - validate current_price > 0
+                if rec.get('predicted_price') is not None and rec.get('current_price', 0) > 0:
                     change_pct = ((rec['predicted_price'] - rec['current_price']) /
                                  rec['current_price'] * 100)
                     self.logger.prediction(
