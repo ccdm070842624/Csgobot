@@ -1,0 +1,16 @@
+# FastAPI Server Requirements
+# Install with: pip install -r requirements_api.txt
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# Existing bot dependencies (already installed)
+# requests
+# beautifulsoup4
+# pandas
+# numpy
+# scikit-learn
+# matplotlib
+# pyyaml
